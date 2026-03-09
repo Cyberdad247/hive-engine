@@ -14,14 +14,14 @@ logger = logging.getLogger("hive.router")
 
 LADDERS: dict[str, dict[int, str]] = {
     "gemini": {
-        1: "gemini/gemini-2.0-flash",        # Light: Sentinel, Coda (free tier)
-        2: "gemini/gemini-2.5-flash",        # Standard: Forge, Oracle, Debug, Muse, Apis
-        3: "gemini/gemini-2.5-flash",        # Heavy: Aegis (use flash to stay in free tier)
+        1: "gemini/gemini-2.5-flash",                # Light: Sentinel, Coda (stable)
+        2: "gemini/gemini-2.5-flash",                # Standard: Forge, Oracle, Debug, Muse, Apis
+        3: "gemini/gemini-2.5-flash",                # Heavy: Aegis
     },
-    "gemini-pro": {
-        1: "gemini/gemini-2.0-flash",        # Light: free tier
-        2: "gemini/gemini-2.5-flash",        # Standard
-        3: "gemini/gemini-2.5-pro",          # Heavy: requires paid tier
+    "gemini-3.1": {
+        1: "gemini/gemini-3.1-flash-lite-preview",   # Light: preview, may be unavailable
+        2: "gemini/gemini-3.1-pro-preview",           # Standard: preview
+        3: "gemini/gemini-3.1-pro-preview",           # Heavy: preview
     },
     "openai": {
         1: "gpt-4o-mini",        # Light: Sentinel, Coda
@@ -114,6 +114,18 @@ def route(persona_name: str, prompt: str, **kwargs: Any) -> str:
             call_kwargs[key] = kwargs[key]
 
     logger.info("Routing %s -> %s (%d messages)", persona_name, model, len(messages))
-    response = litellm.completion(**call_kwargs)
+    try:
+        response = litellm.completion(**call_kwargs)
+    except (litellm.exceptions.ServiceUnavailableError, litellm.exceptions.RateLimitError) as e:
+        # Fallback: if using a preview/unstable provider, retry with stable gemini
+        provider = os.environ.get("HIVE_PROVIDER", "gemini").lower()
+        if provider != "gemini" and "gemini" in LADDERS:
+            tier = TIER_MAP.get(persona_name.lower(), 2)
+            fallback_model = LADDERS["gemini"][tier]
+            logger.warning("Model %s unavailable, falling back to %s", model, fallback_model)
+            call_kwargs["model"] = fallback_model
+            response = litellm.completion(**call_kwargs)
+        else:
+            raise
     content = response.choices[0].message.content
     return content or ""
