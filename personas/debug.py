@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -147,3 +148,123 @@ class Debug(Persona):
         if lines and lines[-1].strip() == "```":
             lines = lines[:-1]
         return "\n".join(lines)
+
+    @staticmethod
+    def _parse_json_response(text: str) -> dict[str, Any]:
+        """Extract and parse a JSON object from an LLM response string."""
+        cleaned = text.strip()
+        # Strip markdown fences wrapping JSON
+        if cleaned.startswith("```"):
+            lines = cleaned.splitlines()
+            lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            cleaned = "\n".join(lines)
+        return json.loads(cleaned)
+
+    # ── New analysis methods ─────────────────────────────────────
+
+    def profile_performance(self, code: str) -> dict[str, Any]:
+        """Analyze code for performance bottlenecks without executing it.
+
+        Args:
+            code: Source code to analyze.
+
+        Returns:
+            Dict with bottlenecks, complexity estimates, and recommendations.
+        """
+        system_prompt = (
+            "You are a performance analysis expert. Analyze the provided code for "
+            "performance bottlenecks WITHOUT executing it. Examine algorithmic "
+            "complexity (time and space), identify N+1 query patterns, unnecessary "
+            "memory allocations, blocking I/O operations, and redundant computations. "
+            "Suggest concrete optimizations for each issue found.\n\n"
+            "Respond with ONLY a JSON object (no markdown fences, no explanation) "
+            "matching this schema:\n"
+            '{"bottlenecks": [{"location": "<function or line description>", '
+            '"issue": "<description>", "severity": "low"|"medium"|"high", '
+            '"suggestion": "<optimization>"}], '
+            '"complexity": {"time": "<Big-O>", "space": "<Big-O>"}, '
+            '"recommendations": ["<general recommendation>"]}'
+        )
+
+        prompt = f"Analyze the following code for performance issues:\n\n```\n{code}\n```"
+
+        response = router.route(
+            self.name,
+            prompt,
+            system_prompt=system_prompt,
+        )
+        return self._parse_json_response(response)
+
+    def trace_error(self, error_message: str, code: str | None = None) -> dict[str, Any]:
+        """Diagnose the root cause of an error message.
+
+        Args:
+            error_message: The error output or traceback to analyze.
+            code: Optional source code for additional context.
+
+        Returns:
+            Dict with root cause, explanation, fix steps, optional code fix,
+            and related errors.
+        """
+        system_prompt = (
+            "You are an expert error diagnostician. Parse the provided traceback or "
+            "error message and identify the TRUE root cause, not just the surface "
+            "symptom. Explain why the error occurred, provide step-by-step fix "
+            "instructions, and if source code is provided, supply a corrected code "
+            "snippet. Also list related errors the user might encounter after fixing "
+            "this one.\n\n"
+            "Respond with ONLY a JSON object (no markdown fences, no explanation) "
+            "matching this schema:\n"
+            '{"root_cause": "<concise root cause>", '
+            '"explanation": "<detailed explanation>", '
+            '"fix_steps": ["<step 1>", "<step 2>"], '
+            '"code_fix": "<corrected code snippet or null if no code provided>", '
+            '"related_errors": ["<error that might surface next>"]}'
+        )
+
+        prompt = f"Error message:\n```\n{error_message}\n```"
+        if code is not None:
+            prompt += f"\n\nSource code:\n```\n{code}\n```"
+
+        response = router.route(
+            self.name,
+            prompt,
+            system_prompt=system_prompt,
+        )
+        return self._parse_json_response(response)
+
+    def explain_stacktrace(self, stacktrace: str) -> dict[str, Any]:
+        """Explain a raw stack trace in plain English.
+
+        Args:
+            stacktrace: The raw stack trace text.
+
+        Returns:
+            Dict with a summary, per-frame explanations, root cause, and
+            suggested fix.
+        """
+        system_prompt = (
+            "You are a friendly debugging assistant. Take the provided stack trace "
+            "and explain it in plain English. For each frame, describe what the code "
+            "was doing at that point. Identify which frame originated the error and "
+            "why. Suggest a fix in simple, non-jargon terms.\n\n"
+            "Respond with ONLY a JSON object (no markdown fences, no explanation) "
+            "matching this schema:\n"
+            '{"summary": "<one-sentence plain-English summary>", '
+            '"frames": [{"file": "<file path>", "line": <line number>, '
+            '"function": "<function name>", '
+            '"explanation": "<what this frame was doing>"}], '
+            '"root_cause": "<plain-English root cause>", '
+            '"suggested_fix": "<plain-English fix>"}'
+        )
+
+        prompt = f"Explain this stack trace:\n\n```\n{stacktrace}\n```"
+
+        response = router.route(
+            self.name,
+            prompt,
+            system_prompt=system_prompt,
+        )
+        return self._parse_json_response(response)

@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "repo": {
+      "command": "python",
+      "args": ["servers/repo_server.py"]
+    },
+    "shell": {
+      "command": "python",
+      "args": ["servers/shell_server.py"]
+    },
+    "git": {
+      "command": "python",
+      "args": ["servers/git_server.py"]
+    },
+    "test": {
+      "command": "python",
+      "args": ["servers/test_server.py"]
+    }
+  }
+}

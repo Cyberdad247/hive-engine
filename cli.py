@@ -7,6 +7,7 @@ os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 import asyncio
 import ctypes
+import dataclasses
 import json
 import shutil
 import sys
@@ -118,19 +119,62 @@ PERSONA_COLORS: dict[str, str] = {
 
 PERSONA_NAMES = ["oracle", "forge", "sentinel", "debug", "muse", "coda", "aegis", "apis"]
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 HELP_TEXT = """\
 HIVE Engine Commands:
   /run <task>         Run full pipeline (Oracle->Forge->Sentinel+Aegis)
+
+  Forge:
   /forge <prompt>     Generate code with Forge
+  /refactor <code>    Refactor code with Forge
+  /tests <code>       Generate tests with Forge
+  /convert <lang> <code>  Convert code to another language with Forge
+  /document <code>    Document code with Forge
+
+  Oracle:
   /oracle <prompt>    Plan a task with Oracle
+  /deps <description> Dependency analysis with Oracle
+  /diagram <description>  Architecture diagram with Oracle
+  /estimate <task>    Estimate effort with Oracle
+
+  Sentinel:
   /sentinel <code>    Security review with Sentinel
+  /scandeps <requirements>  Scan dependencies with Sentinel
+  /owasp <code>       OWASP checklist with Sentinel
+  /compliance <code>  Compliance check with Sentinel
+
+  Debug:
   /heal <file|code>   Auto-heal with Debug
+  /profile <code>     Profile performance with Debug
+  /trace <error>      Trace error with Debug
+  /stacktrace <trace> Explain stacktrace with Debug
+
+  Muse:
   /muse <prompt>      Optimize a prompt with Muse
+  /mockup <description>   UI mockup with Muse
+  /naming <description>   Naming suggestions with Muse
+  /brainstorm <topic> Brainstorm ideas with Muse
+
+  Coda:
   /compress <text>    Compress with Coda
+  /changelog <diff>   Generate changelog with Coda
+  /diff <diff>        Diff summary with Coda
+  /meeting <transcript>   Meeting notes with Coda
+
+  Aegis:
   /aegis <code>       Red team review with Aegis
+  /threat <description>   Threat model with Aegis
+  /fuzz <code>        Fuzz inputs with Aegis
+  /surface <description>  Attack surface map with Aegis
+
+  Apis:
   /apis <url>         Generate Playwright test with Apis
+  /contract <spec>    API contract validation with Apis
+  /loadtest <url>     Load test with Apis
+  /mockserver <spec>  Mock server with Apis
+
+  General:
   /rate +             Thumbs up last interaction
   /rate -             Thumbs down last interaction
   /learn              Extract rules from rated sessions
@@ -738,6 +782,440 @@ class HiveCLI:
             self.hud.set_persona_status("apis", "done")
             self._print("apis", result)
             self._save_turn("assistant", result, "apis")
+        except Exception as e:
+            self.hud.set_persona_status("apis", "error")
+            self._print("apis", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("apis", "idle")
+            self._active_persona = ""
+
+    # ── Forge skill handlers ────────────────────────────────────────
+
+    async def _handle_refactor(self, arg: str) -> None:
+        self._active_persona = "forge"
+        self.hud.set_persona_status("forge", "working")
+        self._save_turn("user", arg, "forge")
+        try:
+            result = self.forge.refactor(arg)
+            self.hud.set_persona_status("forge", "done")
+            self._print("forge", result)
+            self._save_turn("assistant", result, "forge")
+        except Exception as e:
+            self.hud.set_persona_status("forge", "error")
+            self._print("forge", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("forge", "idle")
+            self._active_persona = ""
+
+    async def _handle_tests(self, arg: str) -> None:
+        self._active_persona = "forge"
+        self.hud.set_persona_status("forge", "working")
+        self._save_turn("user", arg, "forge")
+        try:
+            result = self.forge.add_tests(arg)
+            self.hud.set_persona_status("forge", "done")
+            self._print("forge", result)
+            self._save_turn("assistant", result, "forge")
+        except Exception as e:
+            self.hud.set_persona_status("forge", "error")
+            self._print("forge", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("forge", "idle")
+            self._active_persona = ""
+
+    async def _handle_convert(self, arg: str) -> None:
+        self._active_persona = "forge"
+        self.hud.set_persona_status("forge", "working")
+        self._save_turn("user", arg, "forge")
+        try:
+            parts = arg.split(None, 1)
+            target_language = parts[0] if parts else ""
+            code = parts[1] if len(parts) > 1 else ""
+            result = self.forge.convert(target_language, code)
+            self.hud.set_persona_status("forge", "done")
+            self._print("forge", result)
+            self._save_turn("assistant", result, "forge")
+        except Exception as e:
+            self.hud.set_persona_status("forge", "error")
+            self._print("forge", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("forge", "idle")
+            self._active_persona = ""
+
+    async def _handle_document(self, arg: str) -> None:
+        self._active_persona = "forge"
+        self.hud.set_persona_status("forge", "working")
+        self._save_turn("user", arg, "forge")
+        try:
+            result = self.forge.document(arg)
+            self.hud.set_persona_status("forge", "done")
+            self._print("forge", result)
+            self._save_turn("assistant", result, "forge")
+        except Exception as e:
+            self.hud.set_persona_status("forge", "error")
+            self._print("forge", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("forge", "idle")
+            self._active_persona = ""
+
+    # ── Oracle skill handlers ────────────────────────────────────────
+
+    async def _handle_deps(self, arg: str) -> None:
+        self._active_persona = "oracle"
+        self.hud.set_persona_status("oracle", "working")
+        self._save_turn("user", arg, "oracle")
+        try:
+            result = self.oracle.dependency_analysis(arg)
+            self.hud.set_persona_status("oracle", "done")
+            output = json.dumps(result, indent=2)
+            self._print("oracle", output)
+            self._save_turn("assistant", output, "oracle")
+        except Exception as e:
+            self.hud.set_persona_status("oracle", "error")
+            self._print("oracle", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("oracle", "idle")
+            self._active_persona = ""
+
+    async def _handle_diagram(self, arg: str) -> None:
+        self._active_persona = "oracle"
+        self.hud.set_persona_status("oracle", "working")
+        self._save_turn("user", arg, "oracle")
+        try:
+            result = self.oracle.architecture_diagram(arg)
+            self.hud.set_persona_status("oracle", "done")
+            output = json.dumps(result, indent=2)
+            self._print("oracle", output)
+            self._save_turn("assistant", output, "oracle")
+        except Exception as e:
+            self.hud.set_persona_status("oracle", "error")
+            self._print("oracle", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("oracle", "idle")
+            self._active_persona = ""
+
+    async def _handle_estimate(self, arg: str) -> None:
+        self._active_persona = "oracle"
+        self.hud.set_persona_status("oracle", "working")
+        self._save_turn("user", arg, "oracle")
+        try:
+            result = self.oracle.estimate_effort(arg)
+            self.hud.set_persona_status("oracle", "done")
+            output = json.dumps(result, indent=2)
+            self._print("oracle", output)
+            self._save_turn("assistant", output, "oracle")
+        except Exception as e:
+            self.hud.set_persona_status("oracle", "error")
+            self._print("oracle", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("oracle", "idle")
+            self._active_persona = ""
+
+    # ── Sentinel skill handlers ──────────────────────────────────────
+
+    async def _handle_scandeps(self, arg: str) -> None:
+        self._active_persona = "sentinel"
+        self.hud.set_persona_status("sentinel", "working")
+        self._save_turn("user", arg, "sentinel")
+        try:
+            result = self.sentinel.scan_dependencies(arg)
+            self.hud.set_persona_status("sentinel", "done")
+            output = json.dumps(result, indent=2)
+            self._print("sentinel", output)
+            self._save_turn("assistant", output, "sentinel")
+        except Exception as e:
+            self.hud.set_persona_status("sentinel", "error")
+            self._print("sentinel", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("sentinel", "idle")
+            self._active_persona = ""
+
+    async def _handle_owasp(self, arg: str) -> None:
+        self._active_persona = "sentinel"
+        self.hud.set_persona_status("sentinel", "working")
+        self._save_turn("user", arg, "sentinel")
+        try:
+            result = self.sentinel.owasp_checklist(arg)
+            self.hud.set_persona_status("sentinel", "done")
+            output = json.dumps(result, indent=2)
+            self._print("sentinel", output)
+            self._save_turn("assistant", output, "sentinel")
+        except Exception as e:
+            self.hud.set_persona_status("sentinel", "error")
+            self._print("sentinel", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("sentinel", "idle")
+            self._active_persona = ""
+
+    async def _handle_compliance(self, arg: str) -> None:
+        self._active_persona = "sentinel"
+        self.hud.set_persona_status("sentinel", "working")
+        self._save_turn("user", arg, "sentinel")
+        try:
+            result = self.sentinel.compliance_check(arg)
+            self.hud.set_persona_status("sentinel", "done")
+            output = json.dumps(result, indent=2)
+            self._print("sentinel", output)
+            self._save_turn("assistant", output, "sentinel")
+        except Exception as e:
+            self.hud.set_persona_status("sentinel", "error")
+            self._print("sentinel", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("sentinel", "idle")
+            self._active_persona = ""
+
+    # ── Debug skill handlers ─────────────────────────────────────────
+
+    async def _handle_profile(self, arg: str) -> None:
+        self._active_persona = "debug"
+        self.hud.set_persona_status("debug", "working")
+        self._save_turn("user", arg, "debug")
+        try:
+            result = self.debug.profile_performance(arg)
+            self.hud.set_persona_status("debug", "done")
+            self._print("debug", result)
+            self._save_turn("assistant", result, "debug")
+        except Exception as e:
+            self.hud.set_persona_status("debug", "error")
+            self._print("debug", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("debug", "idle")
+            self._active_persona = ""
+
+    async def _handle_trace(self, arg: str) -> None:
+        self._active_persona = "debug"
+        self.hud.set_persona_status("debug", "working")
+        self._save_turn("user", arg, "debug")
+        try:
+            result = self.debug.trace_error(arg)
+            self.hud.set_persona_status("debug", "done")
+            self._print("debug", result)
+            self._save_turn("assistant", result, "debug")
+        except Exception as e:
+            self.hud.set_persona_status("debug", "error")
+            self._print("debug", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("debug", "idle")
+            self._active_persona = ""
+
+    async def _handle_stacktrace(self, arg: str) -> None:
+        self._active_persona = "debug"
+        self.hud.set_persona_status("debug", "working")
+        self._save_turn("user", arg, "debug")
+        try:
+            result = self.debug.explain_stacktrace(arg)
+            self.hud.set_persona_status("debug", "done")
+            self._print("debug", result)
+            self._save_turn("assistant", result, "debug")
+        except Exception as e:
+            self.hud.set_persona_status("debug", "error")
+            self._print("debug", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("debug", "idle")
+            self._active_persona = ""
+
+    # ── Muse skill handlers ──────────────────────────────────────────
+
+    async def _handle_mockup(self, arg: str) -> None:
+        self._active_persona = "muse"
+        self.hud.set_persona_status("muse", "working")
+        self._save_turn("user", arg, "muse")
+        try:
+            result = self.muse.ui_mockup(arg)
+            self.hud.set_persona_status("muse", "done")
+            self._print("muse", result)
+            self._save_turn("assistant", result, "muse")
+        except Exception as e:
+            self.hud.set_persona_status("muse", "error")
+            self._print("muse", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("muse", "idle")
+            self._active_persona = ""
+
+    async def _handle_naming(self, arg: str) -> None:
+        self._active_persona = "muse"
+        self.hud.set_persona_status("muse", "working")
+        self._save_turn("user", arg, "muse")
+        try:
+            result = self.muse.naming_suggestions(arg)
+            self.hud.set_persona_status("muse", "done")
+            self._print("muse", result)
+            self._save_turn("assistant", result, "muse")
+        except Exception as e:
+            self.hud.set_persona_status("muse", "error")
+            self._print("muse", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("muse", "idle")
+            self._active_persona = ""
+
+    async def _handle_brainstorm(self, arg: str) -> None:
+        self._active_persona = "muse"
+        self.hud.set_persona_status("muse", "working")
+        self._save_turn("user", arg, "muse")
+        try:
+            result = self.muse.brainstorm(arg)
+            self.hud.set_persona_status("muse", "done")
+            self._print("muse", result)
+            self._save_turn("assistant", result, "muse")
+        except Exception as e:
+            self.hud.set_persona_status("muse", "error")
+            self._print("muse", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("muse", "idle")
+            self._active_persona = ""
+
+    # ── Coda skill handlers ──────────────────────────────────────────
+
+    async def _handle_changelog(self, arg: str) -> None:
+        self._active_persona = "coda"
+        self.hud.set_persona_status("coda", "working")
+        self._save_turn("user", arg, "coda")
+        try:
+            result = self.coda.changelog(arg)
+            self.hud.set_persona_status("coda", "done")
+            output = json.dumps(dataclasses.asdict(result), indent=2)
+            self._print("coda", output)
+            self._save_turn("assistant", output, "coda")
+        except Exception as e:
+            self.hud.set_persona_status("coda", "error")
+            self._print("coda", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("coda", "idle")
+            self._active_persona = ""
+
+    async def _handle_diff(self, arg: str) -> None:
+        self._active_persona = "coda"
+        self.hud.set_persona_status("coda", "working")
+        self._save_turn("user", arg, "coda")
+        try:
+            result = self.coda.diff_summary(arg)
+            self.hud.set_persona_status("coda", "done")
+            output = json.dumps(dataclasses.asdict(result), indent=2)
+            self._print("coda", output)
+            self._save_turn("assistant", output, "coda")
+        except Exception as e:
+            self.hud.set_persona_status("coda", "error")
+            self._print("coda", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("coda", "idle")
+            self._active_persona = ""
+
+    async def _handle_meeting(self, arg: str) -> None:
+        self._active_persona = "coda"
+        self.hud.set_persona_status("coda", "working")
+        self._save_turn("user", arg, "coda")
+        try:
+            result = self.coda.meeting_notes(arg)
+            self.hud.set_persona_status("coda", "done")
+            output = json.dumps(dataclasses.asdict(result), indent=2)
+            self._print("coda", output)
+            self._save_turn("assistant", output, "coda")
+        except Exception as e:
+            self.hud.set_persona_status("coda", "error")
+            self._print("coda", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("coda", "idle")
+            self._active_persona = ""
+
+    # ── Aegis skill handlers ─────────────────────────────────────────
+
+    async def _handle_threat(self, arg: str) -> None:
+        self._active_persona = "aegis"
+        self.hud.set_persona_status("aegis", "working")
+        self._save_turn("user", arg, "aegis")
+        try:
+            result = self.aegis.threat_model(arg)
+            self.hud.set_persona_status("aegis", "done")
+            output = json.dumps(result, indent=2)
+            self._print("aegis", output)
+            self._save_turn("assistant", output, "aegis")
+        except Exception as e:
+            self.hud.set_persona_status("aegis", "error")
+            self._print("aegis", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("aegis", "idle")
+            self._active_persona = ""
+
+    async def _handle_fuzz(self, arg: str) -> None:
+        self._active_persona = "aegis"
+        self.hud.set_persona_status("aegis", "working")
+        self._save_turn("user", arg, "aegis")
+        try:
+            result = self.aegis.fuzz_inputs(arg)
+            self.hud.set_persona_status("aegis", "done")
+            output = json.dumps(result, indent=2)
+            self._print("aegis", output)
+            self._save_turn("assistant", output, "aegis")
+        except Exception as e:
+            self.hud.set_persona_status("aegis", "error")
+            self._print("aegis", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("aegis", "idle")
+            self._active_persona = ""
+
+    async def _handle_surface(self, arg: str) -> None:
+        self._active_persona = "aegis"
+        self.hud.set_persona_status("aegis", "working")
+        self._save_turn("user", arg, "aegis")
+        try:
+            result = self.aegis.attack_surface_map(arg)
+            self.hud.set_persona_status("aegis", "done")
+            output = json.dumps(result, indent=2)
+            self._print("aegis", output)
+            self._save_turn("assistant", output, "aegis")
+        except Exception as e:
+            self.hud.set_persona_status("aegis", "error")
+            self._print("aegis", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("aegis", "idle")
+            self._active_persona = ""
+
+    # ── Apis skill handlers ──────────────────────────────────────────
+
+    async def _handle_contract(self, arg: str) -> None:
+        self._active_persona = "apis"
+        self.hud.set_persona_status("apis", "working")
+        self._save_turn("user", arg, "apis")
+        try:
+            result = self.apis.validate_contract(arg)
+            self.hud.set_persona_status("apis", "done")
+            output = json.dumps(result, indent=2)
+            self._print("apis", output)
+            self._save_turn("assistant", output, "apis")
+        except Exception as e:
+            self.hud.set_persona_status("apis", "error")
+            self._print("apis", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("apis", "idle")
+            self._active_persona = ""
+
+    async def _handle_loadtest(self, arg: str) -> None:
+        self._active_persona = "apis"
+        self.hud.set_persona_status("apis", "working")
+        self._save_turn("user", arg, "apis")
+        try:
+            result = self.apis.load_test(arg)
+            self.hud.set_persona_status("apis", "done")
+            output = json.dumps(result, indent=2)
+            self._print("apis", output)
+            self._save_turn("assistant", output, "apis")
+        except Exception as e:
+            self.hud.set_persona_status("apis", "error")
+            self._print("apis", f"Error: {e}")
+        finally:
+            self.hud.set_persona_status("apis", "idle")
+            self._active_persona = ""
+
+    async def _handle_mockserver(self, arg: str) -> None:
+        self._active_persona = "apis"
+        self.hud.set_persona_status("apis", "working")
+        self._save_turn("user", arg, "apis")
+        try:
+            result = self.apis.mock_server(arg)
+            self.hud.set_persona_status("apis", "done")
+            output = json.dumps(result, indent=2)
+            self._print("apis", output)
+            self._save_turn("assistant", output, "apis")
         except Exception as e:
             self.hud.set_persona_status("apis", "error")
             self._print("apis", f"Error: {e}")

@@ -7,6 +7,7 @@ and hive_switch_provider.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import sys
@@ -230,6 +231,298 @@ TOOLS: list[dict[str, Any]] = [
             "required": ["provider"],
         },
     },
+    # ── Forge extended tools ──
+    {
+        "name": "hive_forge_refactor",
+        "description": "Refactor code using Forge. Optionally specify a refactoring goal.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "Code to refactor"},
+                "goal": {"type": "string", "description": "Refactoring goal (optional)"},
+            },
+            "required": ["code"],
+        },
+    },
+    {
+        "name": "hive_forge_tests",
+        "description": "Generate tests for code using Forge.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "Code to generate tests for"},
+                "framework": {"type": "string", "description": "Test framework", "default": "pytest"},
+            },
+            "required": ["code"],
+        },
+    },
+    {
+        "name": "hive_forge_convert",
+        "description": "Convert code to another programming language using Forge.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "Code to convert"},
+                "target_language": {"type": "string", "description": "Target programming language"},
+            },
+            "required": ["code", "target_language"],
+        },
+    },
+    {
+        "name": "hive_forge_document",
+        "description": "Add documentation to code using Forge.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "Code to document"},
+            },
+            "required": ["code"],
+        },
+    },
+    # ── Oracle extended tools ──
+    {
+        "name": "hive_oracle_deps",
+        "description": "Analyze dependencies for a codebase or description using Oracle.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code_or_description": {"type": "string", "description": "Code or description to analyze dependencies for"},
+            },
+            "required": ["code_or_description"],
+        },
+    },
+    {
+        "name": "hive_oracle_diagram",
+        "description": "Generate an ASCII architecture diagram using Oracle.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "description": {"type": "string", "description": "System description to diagram"},
+            },
+            "required": ["description"],
+        },
+    },
+    {
+        "name": "hive_oracle_estimate",
+        "description": "Estimate implementation effort for a task using Oracle.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_description": {"type": "string", "description": "Task to estimate effort for"},
+            },
+            "required": ["task_description"],
+        },
+    },
+    # ── Sentinel extended tools ──
+    {
+        "name": "hive_sentinel_deps",
+        "description": "Scan dependencies for known vulnerabilities using Sentinel.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "requirements": {"type": "string", "description": "Requirements/dependency list to scan"},
+            },
+            "required": ["requirements"],
+        },
+    },
+    {
+        "name": "hive_sentinel_owasp",
+        "description": "Run OWASP Top 10 checklist against code using Sentinel.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "Code to check"},
+                "app_type": {"type": "string", "description": "Application type", "default": "web"},
+            },
+            "required": ["code"],
+        },
+    },
+    {
+        "name": "hive_sentinel_compliance",
+        "description": "Check code against a compliance standard using Sentinel.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "Code to check"},
+                "standard": {"type": "string", "description": "Compliance standard (general, gdpr, hipaa, pci-dss)", "default": "general"},
+            },
+            "required": ["code"],
+        },
+    },
+    # ── Debug extended tools ──
+    {
+        "name": "hive_debug_profile",
+        "description": "Profile code for performance issues using Debug.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "Code to profile"},
+            },
+            "required": ["code"],
+        },
+    },
+    {
+        "name": "hive_debug_trace",
+        "description": "Trace the root cause of an error using Debug.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "error_message": {"type": "string", "description": "Error message to trace"},
+                "code": {"type": "string", "description": "Related code (optional)"},
+            },
+            "required": ["error_message"],
+        },
+    },
+    {
+        "name": "hive_debug_stacktrace",
+        "description": "Explain a stack trace in plain language using Debug.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "stacktrace": {"type": "string", "description": "Stack trace to explain"},
+            },
+            "required": ["stacktrace"],
+        },
+    },
+    # ── Muse extended tools ──
+    {
+        "name": "hive_muse_mockup",
+        "description": "Generate an ASCII UI mockup using Muse.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "description": {"type": "string", "description": "UI description to mock up"},
+            },
+            "required": ["description"],
+        },
+    },
+    {
+        "name": "hive_muse_naming",
+        "description": "Get naming suggestions for variables, functions, classes, etc. using Muse.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "description": {"type": "string", "description": "What the thing does or represents"},
+                "context": {"type": "string", "description": "Context: variable, function, class, project, or api_endpoint", "default": "variable"},
+            },
+            "required": ["description"],
+        },
+    },
+    {
+        "name": "hive_muse_brainstorm",
+        "description": "Brainstorm ideas for a topic using Muse.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "topic": {"type": "string", "description": "Topic to brainstorm about"},
+                "num_ideas": {"type": "integer", "description": "Number of ideas to generate", "default": 5},
+            },
+            "required": ["topic"],
+        },
+    },
+    # ── Coda extended tools ──
+    {
+        "name": "hive_coda_changelog",
+        "description": "Generate a changelog from a diff using Coda.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "diff_text": {"type": "string", "description": "Diff text to generate changelog from"},
+            },
+            "required": ["diff_text"],
+        },
+    },
+    {
+        "name": "hive_coda_diff",
+        "description": "Summarize a diff in human-readable form using Coda.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "diff_text": {"type": "string", "description": "Diff text to summarize"},
+            },
+            "required": ["diff_text"],
+        },
+    },
+    {
+        "name": "hive_coda_meeting",
+        "description": "Extract structured meeting notes from a transcript using Coda.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "transcript": {"type": "string", "description": "Meeting transcript to process"},
+            },
+            "required": ["transcript"],
+        },
+    },
+    # ── Aegis extended tools ──
+    {
+        "name": "hive_aegis_threat",
+        "description": "Perform STRIDE threat modeling on a system using Aegis.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "system_description": {"type": "string", "description": "System description to threat model"},
+            },
+            "required": ["system_description"],
+        },
+    },
+    {
+        "name": "hive_aegis_fuzz",
+        "description": "Generate fuzzing / edge-case inputs for code using Aegis.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string", "description": "Code to generate fuzzing inputs for"},
+            },
+            "required": ["code"],
+        },
+    },
+    {
+        "name": "hive_aegis_surface",
+        "description": "Map the attack surface of an application using Aegis.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "code_or_description": {"type": "string", "description": "Code or description to analyze"},
+            },
+            "required": ["code_or_description"],
+        },
+    },
+    # ── Apis extended tools ──
+    {
+        "name": "hive_apis_contract",
+        "description": "Validate an API contract/spec using Apis.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "api_spec": {"type": "string", "description": "API specification to validate"},
+            },
+            "required": ["api_spec"],
+        },
+    },
+    {
+        "name": "hive_apis_loadtest",
+        "description": "Generate a load test script for a URL using Apis.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "Target URL to load-test"},
+                "scenario": {"type": "string", "description": "Test scenario: basic, spike, endurance, stress", "default": "basic"},
+            },
+            "required": ["url"],
+        },
+    },
+    {
+        "name": "hive_apis_mock",
+        "description": "Generate a mock server from an API spec using Apis.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "api_spec": {"type": "string", "description": "API specification to generate mock server for"},
+            },
+            "required": ["api_spec"],
+        },
+    },
 ]
 
 
@@ -286,7 +579,7 @@ class HiveMCPServer:
             },
             "serverInfo": {
                 "name": "hive-engine",
-                "version": "0.2.0",
+                "version": "0.3.0",
             },
         })
 

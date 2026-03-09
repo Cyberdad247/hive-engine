@@ -123,6 +123,16 @@ def main() -> None:
             "hive_aegis", "hive_aegis_prompt", "hive_apis_test",
             "hive_apis_crawl", "hive_pipeline", "hive_memory_search",
             "hive_memory_stats", "hive_rate",
+            # v0.3.0 new skills
+            "hive_forge_refactor", "hive_forge_tests", "hive_forge_convert",
+            "hive_forge_document",
+            "hive_oracle_deps", "hive_oracle_diagram", "hive_oracle_estimate",
+            "hive_sentinel_deps", "hive_sentinel_owasp", "hive_sentinel_compliance",
+            "hive_debug_profile", "hive_debug_trace", "hive_debug_stacktrace",
+            "hive_muse_mockup", "hive_muse_naming", "hive_muse_brainstorm",
+            "hive_coda_changelog", "hive_coda_diff", "hive_coda_meeting",
+            "hive_aegis_threat", "hive_aegis_fuzz", "hive_aegis_surface",
+            "hive_apis_contract", "hive_apis_loadtest", "hive_apis_mock",
         ]
         for tool in expected_tools:
             result.check(f"MCP tool: {tool}",
@@ -139,6 +149,15 @@ def main() -> None:
             "/run", "/forge", "/oracle", "/sentinel", "/heal", "/muse",
             "/compress", "/aegis", "/apis", "/rate", "/learn", "/search",
             "/history", "/stats", "/resume", "/help", "/quit",
+            # v0.3.0 new skills
+            "/refactor", "/tests", "/convert", "/document",
+            "/deps", "/diagram", "/estimate",
+            "/scandeps", "/owasp", "/compliance",
+            "/profile", "/trace", "/stacktrace",
+            "/mockup", "/naming", "/brainstorm",
+            "/changelog", "/diff", "/meeting",
+            "/threat", "/fuzz", "/surface",
+            "/contract", "/loadtest", "/mockserver",
         ]
         for cmd in expected_commands:
             result.check(f"CLI command: {cmd}",
