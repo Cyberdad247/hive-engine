@@ -8,11 +8,41 @@ import litellm
 
 logger = logging.getLogger("hive.router")
 
-# Model ladder: tier -> default model string
-MODEL_LADDER: dict[int, str] = {
-    1: "anthropic/claude-3-5-haiku-20241022",
-    2: "anthropic/claude-sonnet-4-20250514",
-    3: "anthropic/claude-opus-4-20250514",
+# ─── Model Ladders ───────────────────────────────────────────────
+# Switch between providers by setting HIVE_PROVIDER env var.
+# Supported: "gemini" (default), "openai", "anthropic", "ollama"
+
+LADDERS: dict[str, dict[int, str]] = {
+    "gemini": {
+        1: "gemini/gemini-2.0-flash",        # Light: Sentinel, Coda (free tier)
+        2: "gemini/gemini-2.5-flash",        # Standard: Forge, Oracle, Debug, Muse, Apis
+        3: "gemini/gemini-2.5-flash",        # Heavy: Aegis (use flash to stay in free tier)
+    },
+    "gemini-pro": {
+        1: "gemini/gemini-2.0-flash",        # Light: free tier
+        2: "gemini/gemini-2.5-flash",        # Standard
+        3: "gemini/gemini-2.5-pro",          # Heavy: requires paid tier
+    },
+    "openai": {
+        1: "gpt-4o-mini",        # Light: Sentinel, Coda
+        2: "gpt-4o",             # Standard: Forge, Oracle, Debug, Muse, Apis
+        3: "gpt-4o",             # Heavy: Aegis
+    },
+    "anthropic": {
+        1: "anthropic/claude-haiku-4-5-20251001",
+        2: "anthropic/claude-sonnet-4-6-20260320",
+        3: "anthropic/claude-opus-4-6-20260320",
+    },
+    "ollama": {
+        1: "ollama/qwen3.5:4b",  # All same model on <= 8GB RAM
+        2: "ollama/qwen3.5:4b",
+        3: "ollama/qwen3.5:4b",
+    },
+    "ollama-tiered": {
+        1: "ollama/qwen3.5:2b",  # For 16GB+ RAM systems
+        2: "ollama/qwen3.5:4b",
+        3: "ollama/qwen3.5:9b",
+    },
 }
 
 # Persona name -> tier mapping
@@ -28,14 +58,24 @@ TIER_MAP: dict[str, int] = {
 }
 
 
+def _get_ladder() -> dict[int, str]:
+    """Get the active model ladder based on HIVE_PROVIDER env var."""
+    provider = os.environ.get("HIVE_PROVIDER", "gemini").lower()
+    if provider not in LADDERS:
+        logger.warning("Unknown HIVE_PROVIDER '%s', falling back to openai", provider)
+        provider = "openai"
+    return LADDERS[provider]
+
+
 def _resolve_model(persona_name: str) -> str:
     """Resolve the model string for a persona, respecting HIVE_MODEL env override."""
     override = os.environ.get("HIVE_MODEL")
     if override:
         logger.debug("Using HIVE_MODEL override: %s", override)
         return override
+    ladder = _get_ladder()
     tier = TIER_MAP.get(persona_name.lower(), 2)
-    model = MODEL_LADDER[tier]
+    model = ladder[tier]
     logger.debug("Resolved %s (tier %d) -> %s", persona_name, tier, model)
     return model
 
