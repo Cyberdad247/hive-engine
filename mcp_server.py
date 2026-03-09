@@ -1,19 +1,50 @@
-"""HIVE Engine MCP Server -- JSON-RPC over stdio.
+"""HIVE Engine MCP Server -- JSON-RPC over stdio with Content-Length framing.
 
-Exposes 15 tools for integration with Claude Desktop and other MCP clients.
+Exposes tools for integration with Claude Desktop / Claude Code and other MCP clients.
+Loads .env at startup, supports Content-Length headers, resources/list, hive_status,
+and hive_switch_provider.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sys
+import time
 import traceback
+import uuid
+from pathlib import Path
 from typing import Any
 
+# ─── Load .env ──────────────────────────────────────────────────────
+def _load_dotenv() -> None:
+    """Load .env file from the project root using stdlib only (no pip)."""
+    env_path = Path(__file__).resolve().parent / ".env"
+    if not env_path.exists():
+        return
+    with open(env_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip()
+            # Remove surrounding quotes
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+                value = value[1:-1]
+            os.environ.setdefault(key, value)
+
+_load_dotenv()
+
+# Now import project modules (they may depend on env vars)
 from core.feedback import FeedbackEngine
 from core.memory import MemoryManager
 from core.memory_db import MemoryDB
 from core.pipeline import Pipeline
+from core import router
 from personas.aegis import Aegis
 from personas.apis import Apis
 from personas.coda import Coda
@@ -24,7 +55,7 @@ from personas.oracle import Oracle
 from personas.sentinel import Sentinel
 
 
-# --- Tool Definitions ---
+# ─── Tool Definitions ──────────────────────────────────────────────
 
 TOOLS: list[dict[str, Any]] = [
     {
@@ -174,11 +205,43 @@ TOOLS: list[dict[str, Any]] = [
             "required": ["session_id", "direction"],
         },
     },
+    {
+        "name": "hive_status",
+        "description": (
+            "Get full HIVE Engine status: current provider, model ladder, "
+            "all 8 persona statuses, memory stats, and session info."
+        ),
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "hive_switch_provider",
+        "description": (
+            "Switch the active LLM provider. Available: gemini, gemini-3.1, "
+            "openai, anthropic, ollama, ollama-tiered."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "provider": {
+                    "type": "string",
+                    "description": "Provider name to switch to",
+                },
+            },
+            "required": ["provider"],
+        },
+    },
 ]
 
 
+# ─── Resource Definitions ──────────────────────────────────────────
+
+PERSONA_NAMES = ["oracle", "forge", "sentinel", "debug", "muse", "coda", "aegis", "apis"]
+
+
+# ─── MCP Server ────────────────────────────────────────────────────
+
 class HiveMCPServer:
-    """MCP server using JSON-RPC 2.0 over stdio."""
+    """MCP server using JSON-RPC 2.0 over stdio with Content-Length framing."""
 
     def __init__(self) -> None:
         self.db = MemoryDB()
@@ -195,6 +258,13 @@ class HiveMCPServer:
         self.aegis = Aegis()
         self.apis = Apis()
 
+        self.session_id = str(uuid.uuid4())[:8]
+        self.db.save_session(self.session_id)
+        self.memory.set_session(self.session_id)
+        self._start_time = time.time()
+
+    # ── JSON-RPC helpers ──
+
     def _jsonrpc_response(self, id: Any, result: Any) -> dict:
         return {"jsonrpc": "2.0", "id": id, "result": result}
 
@@ -205,20 +275,79 @@ class HiveMCPServer:
             err["data"] = data
         return {"jsonrpc": "2.0", "id": id, "error": err}
 
+    # ── Protocol handlers ──
+
     def handle_initialize(self, id: Any, params: dict) -> dict:
         return self._jsonrpc_response(id, {
             "protocolVersion": "2024-11-05",
             "capabilities": {
                 "tools": {"listChanged": False},
+                "resources": {"subscribe": False, "listChanged": False},
             },
             "serverInfo": {
                 "name": "hive-engine",
-                "version": "0.1.0",
+                "version": "0.2.0",
             },
         })
 
     def handle_tools_list(self, id: Any, params: dict) -> dict:
         return self._jsonrpc_response(id, {"tools": TOOLS})
+
+    def handle_resources_list(self, id: Any, params: dict) -> dict:
+        """Return current provider config and persona status as resources."""
+        provider = os.environ.get("HIVE_PROVIDER", "gemini").lower()
+        ladder = router.LADDERS.get(provider, {})
+
+        resources = [
+            {
+                "uri": "hive://config/provider",
+                "name": "Current Provider Configuration",
+                "description": f"Active provider: {provider}",
+                "mimeType": "application/json",
+            },
+            {
+                "uri": "hive://status/personas",
+                "name": "Persona Status",
+                "description": "Status of all 8 HIVE personas",
+                "mimeType": "application/json",
+            },
+        ]
+        return self._jsonrpc_response(id, {"resources": resources})
+
+    def handle_resources_read(self, id: Any, params: dict) -> dict:
+        """Read a specific resource by URI."""
+        uri = params.get("uri", "")
+
+        if uri == "hive://config/provider":
+            provider = os.environ.get("HIVE_PROVIDER", "gemini").lower()
+            ladder = router.LADDERS.get(provider, {})
+            content = json.dumps({
+                "provider": provider,
+                "ladder": {str(k): v for k, v in ladder.items()},
+                "available_providers": list(router.LADDERS.keys()),
+                "tier_map": router.TIER_MAP,
+            }, indent=2)
+            return self._jsonrpc_response(id, {
+                "contents": [{"uri": uri, "mimeType": "application/json", "text": content}]
+            })
+
+        elif uri == "hive://status/personas":
+            personas_info = {}
+            provider = os.environ.get("HIVE_PROVIDER", "gemini").lower()
+            ladder = router.LADDERS.get(provider, {})
+            for p in PERSONA_NAMES:
+                tier = router.TIER_MAP.get(p, 2)
+                personas_info[p] = {
+                    "tier": tier,
+                    "model": ladder.get(tier, "N/A"),
+                    "status": "ready",
+                }
+            content = json.dumps(personas_info, indent=2)
+            return self._jsonrpc_response(id, {
+                "contents": [{"uri": uri, "mimeType": "application/json", "text": content}]
+            })
+
+        return self._jsonrpc_error(id, -32602, f"Unknown resource URI: {uri}")
 
     def handle_tools_call(self, id: Any, params: dict) -> dict:
         name = params.get("name", "")
@@ -234,6 +363,8 @@ class HiveMCPServer:
                 "content": [{"type": "text", "text": f"Error: {e}"}],
                 "isError": True,
             })
+
+    # ── Tool dispatch ──
 
     def _dispatch_tool(self, name: str, args: dict) -> Any:
         if name == "hive_oracle":
@@ -329,8 +460,70 @@ class HiveMCPServer:
             self.feedback.rate(args["session_id"], args["direction"])
             return {"status": "ok", "session_id": args["session_id"],
                     "direction": args["direction"]}
+        elif name == "hive_status":
+            return self._get_status()
+        elif name == "hive_switch_provider":
+            return self._switch_provider(args["provider"])
         else:
             raise ValueError(f"Unknown tool: {name}")
+
+    def _get_status(self) -> dict[str, Any]:
+        """Build comprehensive status report."""
+        provider = os.environ.get("HIVE_PROVIDER", "gemini").lower()
+        ladder = router.LADDERS.get(provider, {})
+
+        # Persona info
+        personas: dict[str, Any] = {}
+        for p in PERSONA_NAMES:
+            tier = router.TIER_MAP.get(p, 2)
+            personas[p] = {
+                "tier": tier,
+                "model": ladder.get(tier, "N/A"),
+                "status": "ready",
+            }
+
+        # Memory stats
+        mem_stats = self.memory.get_stats()
+        db_stats = self.db.get_stats()
+
+        return {
+            "provider": {
+                "name": provider,
+                "ladder": {str(k): v for k, v in ladder.items()},
+                "available": list(router.LADDERS.keys()),
+            },
+            "personas": personas,
+            "memory": {
+                "working_turns": mem_stats.get("working_size", 0),
+                "compressed_anchors": mem_stats.get("compressed_anchors", 0),
+                "archival_turns": mem_stats.get("archival_size", 0),
+                "total_turns_ram": mem_stats.get("total_turns", 0),
+            },
+            "database": db_stats,
+            "session": {
+                "id": self.session_id,
+                "uptime_seconds": int(time.time() - self._start_time),
+            },
+        }
+
+    def _switch_provider(self, provider: str) -> dict[str, Any]:
+        """Switch the active LLM provider."""
+        provider = provider.strip().lower()
+        if provider not in router.LADDERS:
+            return {
+                "success": False,
+                "error": f"Unknown provider: {provider}",
+                "available": list(router.LADDERS.keys()),
+            }
+        os.environ["HIVE_PROVIDER"] = provider
+        ladder = router.LADDERS[provider]
+        return {
+            "success": True,
+            "provider": provider,
+            "ladder": {str(k): v for k, v in ladder.items()},
+        }
+
+    # ── Request routing ──
 
     def handle_request(self, request: dict) -> dict | None:
         method = request.get("method", "")
@@ -345,6 +538,10 @@ class HiveMCPServer:
             return self.handle_tools_list(id, params)
         elif method == "tools/call":
             return self.handle_tools_call(id, params)
+        elif method == "resources/list":
+            return self.handle_resources_list(id, params)
+        elif method == "resources/read":
+            return self.handle_resources_read(id, params)
         elif method == "ping":
             return self._jsonrpc_response(id, {})
         else:
@@ -352,39 +549,70 @@ class HiveMCPServer:
                 return self._jsonrpc_error(id, -32601, f"Method not found: {method}")
             return None  # ignore unknown notifications
 
+    # ── Stdio transport with Content-Length framing ──
+
+    def _write_message(self, data: dict) -> None:
+        """Write a JSON-RPC message with Content-Length header."""
+        body = json.dumps(data)
+        body_bytes = body.encode("utf-8")
+        header = f"Content-Length: {len(body_bytes)}\r\n\r\n"
+        sys.stdout.buffer.write(header.encode("utf-8"))
+        sys.stdout.buffer.write(body_bytes)
+        sys.stdout.buffer.flush()
+
+    def _read_message(self) -> dict | None:
+        """Read a JSON-RPC message. Supports both Content-Length framing and bare JSON lines."""
+        # Read a line from stdin
+        line = sys.stdin.buffer.readline()
+        if not line:
+            return None  # EOF
+
+        line_str = line.decode("utf-8", errors="replace").strip()
+        if not line_str:
+            return None
+
+        # Check if this is a Content-Length header
+        if line_str.startswith("Content-Length:"):
+            length = int(line_str.split(":", 1)[1].strip())
+            # Read until we get the empty line separator
+            while True:
+                separator = sys.stdin.buffer.readline()
+                sep_str = separator.decode("utf-8", errors="replace").strip()
+                if sep_str == "":
+                    break
+            # Read exactly `length` bytes
+            body_bytes = b""
+            while len(body_bytes) < length:
+                chunk = sys.stdin.buffer.read(length - len(body_bytes))
+                if not chunk:
+                    break
+                body_bytes += chunk
+            body = body_bytes.decode("utf-8", errors="replace")
+            return json.loads(body)
+        else:
+            # Try to parse as bare JSON (backwards compatibility)
+            try:
+                return json.loads(line_str)
+            except json.JSONDecodeError:
+                return None
+
     def run(self) -> None:
         """Main stdio loop: read JSON-RPC from stdin, write to stdout."""
-        # Use binary mode for reliable line reading
-        stdin = sys.stdin
-        stdout = sys.stdout
-
         while True:
             try:
-                line = stdin.readline()
-                if not line:
-                    break  # EOF
-                line = line.strip()
-                if not line:
+                request = self._read_message()
+                if request is None:
+                    # Check if stdin is closed
+                    if sys.stdin.buffer.closed:
+                        break
                     continue
-
-                try:
-                    request = json.loads(line)
-                except json.JSONDecodeError:
-                    # Try reading Content-Length header style
-                    if line.startswith("Content-Length:"):
-                        length = int(line.split(":")[1].strip())
-                        stdin.readline()  # empty line
-                        body = stdin.read(length)
-                        request = json.loads(body)
-                    else:
-                        continue
 
                 response = self.handle_request(request)
                 if response is not None:
-                    response_json = json.dumps(response)
-                    stdout.write(response_json + "\n")
-                    stdout.flush()
+                    self._write_message(response)
 
+            except json.JSONDecodeError:
+                continue
             except Exception:
                 traceback.print_exc(file=sys.stderr)
                 continue

@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "hive": {
-      "command": "python",
-      "args": ["mcp_server.py"]
+      "command": "C:\\Users\\Invis\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "args": ["C:\\Users\\Invis\\hive-engine\\mcp_server.py"]
     }
   }
 }
