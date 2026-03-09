@@ -1,0 +1,66 @@
+name: HIVE Engine CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run HIVE linter
+        run: python scripts/lint.py --no-info
+
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run verification checks
+        run: python scripts/verify.py
+
+  edge-build:
+    name: Edge Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build and validate edge bundle
+        run: python scripts/edge_build.py --profile standard --validate
+
+  auto-tag:
+    name: Auto Tag
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [lint, verify, edge-build]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check if VERSION changed
+        id: version_check
+        run: |
+          if git diff HEAD~1 --name-only | grep -q '^VERSION$'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "version=$(cat VERSION | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Create tag
+        if: steps.version_check.outputs.changed == 'true'
+        run: |
+          VERSION="${{ steps.version_check.outputs.version }}"
+          git tag -a "v${VERSION}" -m "Release v${VERSION}"
+          git push origin "v${VERSION}"
