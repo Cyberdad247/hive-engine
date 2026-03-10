@@ -80,7 +80,7 @@ def main() -> None:
     # 5. .gitignore has .env and .hive/
     gitignore_path = PROJECT_ROOT / ".gitignore"
     if gitignore_path.exists():
-        gitignore = gitignore_path.read_text()
+        gitignore = gitignore_path.read_text(encoding="utf-8")
         result.check(".gitignore has .env",
                       ".env" in gitignore, "Missing .env in .gitignore")
         result.check(".gitignore has .hive/",
@@ -92,7 +92,7 @@ def main() -> None:
     for pf in persona_files[2:]:  # skip __init__.py and base.py
         path = PROJECT_ROOT / pf
         if path.exists():
-            source = path.read_text()
+            source = path.read_text(encoding="utf-8")
             try:
                 tree = ast.parse(source)
                 classes = [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]
@@ -116,7 +116,7 @@ def main() -> None:
     # 7. MCP server has all 15 tools
     mcp_path = PROJECT_ROOT / "mcp_server.py"
     if mcp_path.exists():
-        mcp_source = mcp_path.read_text()
+        mcp_source = mcp_path.read_text(encoding="utf-8")
         expected_tools = [
             "hive_oracle", "hive_forge", "hive_sentinel", "hive_heal",
             "hive_muse", "hive_coda_compress", "hive_coda_verify",
@@ -144,7 +144,7 @@ def main() -> None:
     # 8. CLI has all commands
     cli_path = PROJECT_ROOT / "cli.py"
     if cli_path.exists():
-        cli_source = cli_path.read_text()
+        cli_source = cli_path.read_text(encoding="utf-8")
         expected_commands = [
             "/run", "/forge", "/oracle", "/sentinel", "/heal", "/muse",
             "/compress", "/aegis", "/apis", "/rate", "/learn", "/search",
